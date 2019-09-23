@@ -29,8 +29,9 @@ class DQN:
                     learningRate=1e-3, 
                     discountFactor = 0.9,
                     targetNet = False,
+                    targetNetUpdateEp = 5,
                     visualize = False,
-                    saveEachIter = 100, 
+                    saveEachEpisode = 100, 
                     modelPath = None):
                 
         self.targetNet = targetNet
@@ -41,14 +42,14 @@ class DQN:
                 self.tNet.load_weights(modelPath)
 
 
-        iter = 0
+        episode = 0
         replayMemory = ReplayBuffer(size=replayBufferSize)
         
         train_label = datetime.now().strftime("%Y%m%d-%H%M%S")
         os.mkdir("checkpoint_"+train_label)
         writer = tf.summary.create_file_writer("./train_dqn/train_"+train_label)
 
-        while iter < iterations:
+        while episode < iterations:
             ob0 = self.env.reset()
             totalReward = 0
             losses = np.array([])
@@ -83,17 +84,18 @@ class DQN:
                 tf.summary.scalar("train_loss", tf.reduce_mean(losses), step=iter)
                 writer.flush()
 
-            if iter % saveEachIter == 0:
+            if episode % saveEachEpisode == 0:
                 self.qNet.save_weights("checkpoint_"+train_label+"/dqn_"+str(iter)+".hdf5")
 
             eGreedy0 *= eGreedyFactor   # Decrease greedy factor
             if eGreedy0 < 0.02:
                 eGreedy0 = 0.02
             
-            iter +=1
+            episode +=1
             
             if self.targetNet:
-                self.tNet.set_weights(self.qNet.get_weights()) 
+                if(episode % targetNetUpdateEp == 0)
+                    self.tNet.set_weights(self.qNet.get_weights()) 
 
     def load(self, modelPath):
         self.qNet = tf.keras.models.load_model(modelPath)
