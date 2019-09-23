@@ -19,6 +19,7 @@ class DQN:
         self.n_actions = self.env.action_space.n
         self.n_observations = self.env.observation_space.shape[0]
         self.isNetInit = False
+        self.targetNet = False
     
     def learn(self,
                     iterations=1000, 
@@ -42,14 +43,14 @@ class DQN:
                 self.tNet.load_weights(modelPath)
 
 
-        episode = 0
+        episode = 1
         replayMemory = ReplayBuffer(size=replayBufferSize)
         
         train_label = datetime.now().strftime("%Y%m%d-%H%M%S")
         os.mkdir("checkpoint_"+train_label)
         writer = tf.summary.create_file_writer("./train_dqn/train_"+train_label)
 
-        while episode < iterations:
+        while episode <= iterations:
             ob0 = self.env.reset()
             totalReward = 0
             losses = np.array([])
@@ -94,11 +95,14 @@ class DQN:
             episode +=1
             
             if self.targetNet:
-                if(episode % targetNetUpdateEp == 0)
+                if(episode % targetNetUpdateEp == 0):
                     self.tNet.set_weights(self.qNet.get_weights()) 
 
     def load(self, modelPath):
-        self.qNet = tf.keras.models.load_model(modelPath)
+        if not self.isNetInit:
+            self.__iniNet(0.001)
+
+        self.qNet.load_weights(modelPath)
 
     def predict(self, state):
         state = state.reshape(-1,4)
@@ -181,6 +185,6 @@ class DQN:
                                                     epsilon=1e-07,
                                                     amsgrad=False )
 
-
+        self.isNetInit = True
         # self.qNet.compile(optimizer=self.optimizer, loss='mse', metrics=['accuracy'])
 
