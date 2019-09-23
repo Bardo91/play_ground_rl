@@ -11,6 +11,7 @@ from datetime import datetime
 from ReplayBuffer import ReplayBuffer
 
 from memory_profiler import profile
+import os
 
 class DQN:
     def __init__(self, env):
@@ -27,19 +28,25 @@ class DQN:
                     batchSize = 32, 
                     learningRate=1e-3, 
                     discountFactor = 0.9,
+                    targetNet = False,
                     visualize = False,
                     saveEachIter = 100, 
                     modelPath = None):
                 
+        self.targetNet = targetNet
         self.__iniNet(learningRate)
         if modelPath:
             self.qNet.load_weights(modelPath)
+            if self.targetNet:
+                self.tNet.load_weights(modelPath)
 
 
         iter = 0
         replayMemory = ReplayBuffer(size=replayBufferSize)
         
-        writer = tf.summary.create_file_writer("./train_dqn/train_"+datetime.now().strftime("%Y%m%d-%H%M%S"))
+        train_label = datetime.now().strftime("%Y%m%d-%H%M%S")
+        os.mkdir("checkpoint_"+train_label)
+        writer = tf.summary.create_file_writer("./train_dqn/train_"+train_label)
 
         while iter < iterations:
             ob0 = self.env.reset()
@@ -77,13 +84,16 @@ class DQN:
                 writer.flush()
 
             if iter % saveEachIter == 0:
-                self.qNet.save("dqn_"+str(iter)+".hdf5")
+                self.qNet.save_weights("checkpoint_"+train_label+"/dqn_"+str(iter)+".hdf5")
 
             eGreedy0 *= eGreedyFactor   # Decrease greedy factor
             if eGreedy0 < 0.02:
                 eGreedy0 = 0.02
-                
+            
             iter +=1
+            
+            if self.targetNet:
+                self.tNet.set_weights(self.qNet.get_weights()) 
 
     def load(self, modelPath):
         self.qNet = tf.keras.models.load_model(modelPath)
@@ -104,12 +114,15 @@ class DQN:
 
     def __trainStep(self, experiences, terminal, discountFactor, learningRate):
         o_x = experiences[0] # np.array([np.array(exp[0]) for exp in experiences])               # Prev state
-        o_a = experiences[1]#np.array([exp[1] for exp in experiences], dtype='float64')        # Actions
-        o_r = experiences[2]#np.array([exp[2] for exp in experiences], dtype='float64')        # Rewards
-        o_xf = experiences[3]#np.array([exp[3] for exp in experiences], dtype='float64')       # Next state
-        o_done  = experiences[4]#np.array([exp[4] for exp in experiences], dtype='float64')    # Terminal step
+        o_a = experiences[1] #np.array([exp[1] for exp in experiences], dtype='float64')        # Actions
+        o_r = experiences[2] #np.array([exp[2] for exp in experiences], dtype='float64')        # Rewards
+        o_xf = experiences[3] #np.array([exp[3] for exp in experiences], dtype='float64')       # Next state
+        o_done  = experiences[4] #np.array([exp[4] for exp in experiences], dtype='float64')    # Terminal step
 
-        q_update = o_r + discountFactor * np.max(self.qNet.predict(o_xf), axis=-1)*(1-o_done) # add max reward
+        if self.targetNet:
+            q_update = o_r + discountFactor * np.max(self.tNet.predict(o_xf), axis=-1)*(1-o_done) # add max reward
+        else:
+            q_update = o_r + discountFactor * np.max(self.qNet.predict(o_xf), axis=-1)*(1-o_done) # add max reward
         # Generate a target value that is the same output for non-trainable actions and different for trainable ones
         target_value = self.predict(o_x)
 
@@ -142,13 +155,23 @@ class DQN:
         self.isNetInit = True
         self.qNet = tf.keras.models.Sequential([
                     tf.keras.layers.Flatten(input_shape=(self.n_observations,)),    ## 666 BATCH SIZE?
-                    tf.keras.layers.Dense(32, activation='relu'),
+                    tf.keras.layers.Dense(64, activation='relu'),
                     tf.keras.layers.Dropout(0.2),
-                    tf.keras.layers.Dense(32, activation='relu'),
+                    tf.keras.layers.Dense(64, activation='relu'),
                     tf.keras.layers.Dropout(0.2),
                     tf.keras.layers.Dense(self.env.action_space.n, activation='linear')
                     ])
 
+
+        if self.targetNet:
+            self.tNet = tf.keras.models.Sequential([
+                    tf.keras.layers.Flatten(input_shape=(self.n_observations,)),    ## 666 BATCH SIZE?
+                    tf.keras.layers.Dense(64, activation='relu'),
+                    tf.keras.layers.Dropout(0.2),
+                    tf.keras.layers.Dense(64, activation='relu'),
+                    tf.keras.layers.Dropout(0.2),
+                    tf.keras.layers.Dense(self.env.action_space.n, activation='linear')
+                    ])
 
         self.optimizer = tf.keras.optimizers.Adam(  learning_rate=learningRate,
                                                     beta_1=0.9,
